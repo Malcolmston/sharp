@@ -18,6 +18,10 @@ const (
 	FormatUnknown Format = ""
 	FormatPNG     Format = "png"
 	FormatJPEG    Format = "jpeg"
+	FormatGIF     Format = "gif"
+	FormatBMP     Format = "bmp"
+	FormatTIFF    Format = "tiff"
+	FormatRaw     Format = "raw"
 )
 
 // Pipeline is a fluent, chainable image-processing pipeline. Construct one with
@@ -29,9 +33,10 @@ const (
 // operation becomes a no-op; the error surfaces from the terminal call or from
 // Err. All operations are deterministic.
 type Pipeline struct {
-	img    *image.RGBA
-	format Format
-	err    error
+	img     *image.RGBA
+	format  Format
+	density int
+	err     error
 }
 
 // New creates a pipeline from an already-decoded image. The source pixels are
@@ -40,27 +45,28 @@ func New(img image.Image) *Pipeline {
 	if img == nil {
 		return &Pipeline{err: fmt.Errorf("sharp: New called with nil image")}
 	}
-	return &Pipeline{img: toRGBA(img), format: FormatUnknown}
+	return &Pipeline{img: toRGBA(img), format: FormatUnknown, density: defaultDensity}
 }
 
 // FromBytes decodes an encoded image (PNG or JPEG) from a byte slice and
 // returns a pipeline seeded with it. The detected format is recorded and
 // reported by Metadata.
 func FromBytes(data []byte) *Pipeline {
-	img, format, err := image.Decode(bytes.NewReader(data))
+	img, format, err := decodeImage(data)
 	if err != nil {
 		return &Pipeline{err: fmt.Errorf("sharp: decode: %w", err)}
 	}
-	return &Pipeline{img: toRGBA(img), format: normaliseFormat(format)}
+	return &Pipeline{img: toRGBA(img), format: format, density: defaultDensity}
 }
 
-// FromReader decodes an encoded image from r.
+// FromReader decodes an encoded image from r. The reader is fully consumed so
+// the in-package BMP and TIFF decoders can inspect the magic number.
 func FromReader(r io.Reader) *Pipeline {
-	img, format, err := image.Decode(r)
+	data, err := io.ReadAll(r)
 	if err != nil {
-		return &Pipeline{err: fmt.Errorf("sharp: decode: %w", err)}
+		return &Pipeline{err: fmt.Errorf("sharp: read: %w", err)}
 	}
-	return &Pipeline{img: toRGBA(img), format: normaliseFormat(format)}
+	return FromBytes(data)
 }
 
 // FromFile reads and decodes an image file from disk.
@@ -80,27 +86,57 @@ func (p *Pipeline) Err() error { return p.err }
 // error state. Mutating the clone never affects the original.
 func (p *Pipeline) Clone() *Pipeline {
 	if p.err != nil {
-		return &Pipeline{err: p.err, format: p.format}
+		return &Pipeline{err: p.err, format: p.format, density: p.density}
 	}
 	dst := image.NewRGBA(p.img.Bounds())
 	copy(dst.Pix, p.img.Pix)
-	return &Pipeline{img: dst, format: p.format}
+	return &Pipeline{img: dst, format: p.format, density: p.density}
 }
 
 // Metadata describes the current image held by a pipeline.
 type Metadata struct {
+	// Width and Height are the pixel dimensions.
 	Width  int
 	Height int
+	// Format is the detected source format (FormatUnknown for images built with
+	// New or produced entirely in-memory).
 	Format Format
+	// Channels is the number of meaningful colour bands: 4 when the image has
+	// any transparency, otherwise 3.
+	Channels int
+	// HasAlpha reports whether any pixel is non-opaque.
+	HasAlpha bool
+	// Density is the pixel density in dots per inch (defaults to 72).
+	Density int
+	// Space names the colour space; this library operates in sRGB.
+	Space string
 }
 
-// Metadata returns the dimensions and source format of the current image.
+// Metadata returns the dimensions, source format and colour properties of the
+// current image.
 func (p *Pipeline) Metadata() (Metadata, error) {
 	if p.err != nil {
 		return Metadata{}, p.err
 	}
 	b := p.img.Bounds()
-	return Metadata{Width: b.Dx(), Height: b.Dy(), Format: p.format}, nil
+	density := p.density
+	if density == 0 {
+		density = defaultDensity
+	}
+	alpha := imageHasAlpha(p.img)
+	channels := 3
+	if alpha {
+		channels = 4
+	}
+	return Metadata{
+		Width:    b.Dx(),
+		Height:   b.Dy(),
+		Format:   p.format,
+		Channels: channels,
+		HasAlpha: alpha,
+		Density:  density,
+		Space:    "srgb",
+	}, nil
 }
 
 // Stats holds simple per-channel statistics for an image, with each mean in the
@@ -219,18 +255,18 @@ func (p *Pipeline) ToFile(path string, format Format, quality int) error {
 	switch format {
 	case FormatJPEG:
 		data, err = p.ToJPEG(quality)
-	case FormatPNG, FormatUnknown:
+	case FormatGIF:
+		data, err = p.ToGIF()
+	case FormatBMP:
+		data, err = p.ToBMP()
+	case FormatTIFF:
+		data, err = p.ToTIFF()
+	case FormatPNG, FormatUnknown, FormatRaw:
 		data, err = p.ToPNG()
 	default:
 		return fmt.Errorf("sharp: unsupported format %q", format)
 	}
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return fmt.Errorf("sharp: write %q: %w", path, err)
-	}
-	return nil
+	return writeCodecFile(path, data, err)
 }
 
 // toRGBA returns img as an *image.RGBA, copying pixels. If img is already an
@@ -262,6 +298,12 @@ func normaliseFormat(f string) Format {
 		return FormatPNG
 	case "jpeg":
 		return FormatJPEG
+	case "gif":
+		return FormatGIF
+	case "bmp":
+		return FormatBMP
+	case "tiff":
+		return FormatTIFF
 	default:
 		return FormatUnknown
 	}

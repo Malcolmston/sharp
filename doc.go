@@ -1,7 +1,8 @@
 // Package sharp is a high-level, fluent image-processing library for Go, built
-// entirely on the standard library (image, image/color, image/png,
-// image/jpeg). It is inspired by the ergonomics of the Node.js "sharp" library:
-// you build a pipeline, chain operations, and export to a format.
+// entirely on the standard library (image, image/color, image/png, image/jpeg,
+// image/gif; BMP and uncompressed TIFF codecs are implemented in-package). It
+// is inspired by the ergonomics of the Node.js "sharp" library: you build a
+// pipeline, chain operations, and export to a format.
 //
 // # The pipeline
 //
@@ -29,27 +30,46 @@
 // # Operations
 //
 // Geometry:
-//   - Resize with nearest or bilinear sampling and FitExact/FitContain/FitCover.
+//   - Resize with Nearest, Bilinear, Cubic (Catmull-Rom), Mitchell or Lanczos3
+//     sampling and FitExact/FitContain/FitCover.
+//   - Affine (arbitrary 2x3 matrix, bilinear) and Trim (auto-crop borders).
 //   - Crop / Extract a rectangular region, Extend (pad) with a fill colour.
 //   - Rotate90/180/270 (exact) and Rotate (arbitrary angle, bilinear).
 //   - FlipVertical/Flip and FlipHorizontal/Flop.
 //
-// Colour:
+// Colour and tone:
 //   - Grayscale, Negate/Invert, Tint, Brightness, Contrast, Gamma,
 //     Saturation, Threshold.
+//   - Normalise (contrast stretch), Linear (a*x+b per channel),
+//     Modulate (brightness/saturation/hue/lightness) and CLAHE.
 //
-// Convolution:
-//   - Blur (separable Gaussian), Sharpen, and a generic Convolve(Kernel).
+// Convolution and morphology:
+//   - Blur (separable Gaussian), Sharpen, Unsharp (sigma-based unsharp mask)
+//     and a generic Convolve(Kernel).
+//   - Median, Erode, Dilate and a generic Morphology (open/close).
+//
+// Channels and bands:
+//   - ExtractChannel, JoinChannels, RemoveAlpha, EnsureAlpha, Recomb (colour
+//     matrix) and bitwise Boolean/Bandbool operations.
 //
 // Composition:
-//   - Composite another image with alpha blending and gravity/offset placement.
+//   - Composite another image with alpha blending, gravity/offset placement and
+//     a choice of blend modes (multiply, screen, overlay, darken, lighten, ...).
 //   - Flatten onto a solid background colour, removing transparency.
 //
 // # Metadata and statistics
 //
-// Metadata reports the current width, height and detected source format. Stats
-// computes per-channel means. Clone returns an independent copy of a pipeline
-// so a partially-built pipeline can be branched.
+// Metadata reports the current width, height, detected source format, channel
+// count, alpha presence, density and colour space. Stats computes per-channel
+// means. Clone returns an independent copy of a pipeline so a partially-built
+// pipeline can be branched.
+//
+// # Codecs
+//
+// Input decodes PNG, JPEG, GIF, BMP and uncompressed TIFF (the last two
+// implemented in-package), plus raw pixel buffers via FromRaw. Output supports
+// PNG, JPEG, GIF, BMP, TIFF and raw bytes. There is no standard-library codec
+// for WebP or AVIF, so those formats are out of scope.
 //
 // # Output
 //
@@ -58,6 +78,10 @@
 //	img, err := p.ToImage()      // the image.Image
 //	buf, err := p.ToPNG()        // PNG bytes
 //	buf, err := p.ToJPEG(90)     // JPEG bytes at quality 90
+//	buf, err := p.ToGIF()        // GIF bytes
+//	buf, err := p.ToBMP()        // BMP bytes
+//	buf, err := p.ToTIFF()       // TIFF bytes
+//	buf, err := p.ToRaw()        // raw RGBA bytes
 //	err := p.ToFile("out.png", sharp.FormatPNG, 0)
 //
 // # Determinism and colour handling

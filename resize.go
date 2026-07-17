@@ -155,6 +155,8 @@ func sample(src *image.RGBA, tw, th int, interp Interpolation) *image.RGBA {
 	switch interp {
 	case Nearest:
 		resizeNearest(src, dst)
+	case Cubic, Mitchell, Lanczos3:
+		resampleSeparable(src, dst, interp)
 	default:
 		resizeBilinear(src, dst)
 	}

@@ -33,6 +33,9 @@ type CompositeOptions struct {
 	// Opacity scales the overlay's alpha in [0,1]. The zero value means fully
 	// opaque (1.0); use a small positive number for near-transparent overlays.
 	Opacity float64
+	// Blend selects the blend mode. The zero value, BlendOver, is ordinary
+	// source-over compositing.
+	Blend BlendMode
 }
 
 // Composite alpha-blends overlay onto the current image ("source-over"). The
@@ -85,13 +88,16 @@ func (p *Pipeline) Composite(overlay image.Image, opts CompositeOptions) *Pipeli
 			da := float64(p.img.Pix[di+3]) / 255
 			outA := sa + da*(1-sa)
 			for c := 0; c < 3; c++ {
-				sc := float64(ov.Pix[si+c])
-				dc := float64(p.img.Pix[di+c])
+				sc := float64(ov.Pix[si+c]) / 255
+				dc := float64(p.img.Pix[di+c]) / 255
+				// Blend the source colour against the backdrop, then perform the
+				// full alpha composite (reduces to source-over for BlendOver).
+				bc := blendChannel(opts.Blend, dc, sc)
 				var v float64
 				if outA > 0 {
-					v = (sc*sa + dc*da*(1-sa)) / outA
+					v = (sa*(1-da)*sc + sa*da*bc + (1-sa)*da*dc) / outA
 				}
-				p.img.Pix[di+c] = clampF(v)
+				p.img.Pix[di+c] = clampF(v * 255)
 			}
 			p.img.Pix[di+3] = clampF(outA * 255)
 		}

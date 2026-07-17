@@ -165,7 +165,7 @@ func TestFromFileAndToFile(t *testing.T) {
 	if FromFile(filepath.Join(dir, "nope.png")).Err() == nil {
 		t.Fatal("expected open error")
 	}
-	if err := New(src).ToFile(outPNG, Format("gif"), 0); err == nil {
+	if err := New(src).ToFile(outPNG, Format("webp"), 0); err == nil {
 		t.Fatal("expected unsupported format error")
 	}
 }
