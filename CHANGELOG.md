@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 semantic versioning.
 
+## [0.3.0] - 2026-07-18
+
+Further parity push toward the Node.js `sharp` feature set, still standard-library
+only (no cgo, no third-party dependencies).
+
+### Added
+
+- **Statistics** (parity with `sharp.stats()`): `ChannelStats` (per-band min,
+  max, mean, standard deviation and sum via the new `ChannelStat` type),
+  `Histogram` (256-bin R/G/B/luminance counts via the new `Histogram` type),
+  `Entropy` (Shannon entropy of luminance), `Sharpness` (mean absolute
+  Laplacian), `IsOpaque`, `DominantColor`/`DominantColour` and
+  `MeanColor`/`MeanColour`.
+- **Colour-space conversions**: `RGBToHSV`/`HSVToRGB`, `RGBToXYZ`/`XYZToRGB`,
+  `RGBToLab`/`LabToRGB` (CIELAB under D65) and `DeltaE76` (CIE76 colour
+  difference), plus the exported `Luma` helper.
+- **Extend modes** (parity with `extendWith`): `ExtendWith` with the new
+  `ExtendOptions`/`ExtendMode` types, supporting background, edge-copy, repeat
+  (tile) and mirror border fills.
+- **Operations**: `Unflatten` (white → transparent), `Sepia`,
+  `ToColourspace`/`ToColorspace` (`b-w`/`srgb`), `WithDensity`, `ResizeWidth`,
+  `ResizeHeight` and `ToFormat` (encode to any supported format by tag).
+- Benchmarks for `ChannelStats` and `Entropy`.
+
 ## [0.2.0] - 2026-07-17
 
 Large parity push toward the Node.js `sharp` feature set, still standard-library
