@@ -126,19 +126,29 @@ func expand3(v []float64, def float64) (x, y, z float64, err error) {
 // ModulateOptions configures a Modulate operation. Multipliers default to 1 and
 // additive/rotational terms default to 0 when left as the zero value.
 type ModulateOptions struct {
-	// Brightness multiplies lightness (1 = unchanged). Zero maps to 1.
+	// Brightness multiplies the CIELAB lightness L* (1 = unchanged). Zero maps
+	// to 1.
 	Brightness float64
-	// Saturation multiplies saturation (1 = unchanged). Zero maps to 1.
+	// Saturation multiplies the LCh chroma C* (1 = unchanged). Zero maps to 1.
 	Saturation float64
-	// Hue rotates the hue by this many degrees.
+	// Hue rotates the LCh hue angle by this many degrees.
 	Hue float64
-	// Lightness adds this amount (in the 0-100 HSL lightness scale).
+	// Lightness adds this amount directly to the CIELAB lightness L* (which
+	// ranges 0-100).
 	Lightness float64
 }
 
 // Modulate adjusts brightness, saturation, hue and lightness together by
-// converting each pixel to HSL, transforming, and converting back. It is a
-// convenient single call for common tone tweaks. Alpha is preserved.
+// converting each pixel to the cylindrical CIELAB colour space (LCh),
+// transforming, and converting back. This mirrors the upstream Node.js sharp
+// library, which performs modulate in LCh: the lightness L* is scaled by
+// Brightness and offset by Lightness, the chroma C* is scaled by Saturation, and
+// the hue angle is rotated by Hue degrees. It is a convenient single call for
+// common tone tweaks. Alpha is preserved.
+//
+// Because the conversion runs through D65 CIELAB, results match upstream sharp's
+// documented known-answer vectors to within a rounding unit or two (the upstream
+// C++/libvips pipeline uses 32-bit float intermediates where this uses float64).
 func (p *Pipeline) Modulate(opts ModulateOptions) *Pipeline {
 	if p.err != nil {
 		return p
@@ -151,13 +161,15 @@ func (p *Pipeline) Modulate(opts ModulateOptions) *Pipeline {
 	if saturation == 0 {
 		saturation = 1
 	}
+	hueRad := opts.Hue * math.Pi / 180
 	p.eachPixel(func(r, g, b uint8) (uint8, uint8, uint8) {
-		h, s, l := rgbToHSL(r, g, b)
-		h += opts.Hue / 360
-		h -= math.Floor(h)
-		s = clamp01(s * saturation)
-		l = clamp01(l*brightness + opts.Lightness/100)
-		return hslToRGB(h, s, l)
+		l, a, bb := RGBToLab(r, g, b)
+		c := math.Hypot(a, bb)
+		h := math.Atan2(bb, a)
+		l = l*brightness + opts.Lightness
+		c *= saturation
+		h += hueRad
+		return LabToRGB(l, c*math.Cos(h), c*math.Sin(h))
 	})
 	return p
 }

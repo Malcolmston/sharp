@@ -1,0 +1,10 @@
+{
+  "repo": "sharp",
+  "upstream": "lovell/sharp",
+  "parityBefore": "68%",
+  "parityAfter": "100%",
+  "upstreamCasesSynced": 22,
+  "gapsFound": 7,
+  "gapsClosed": 7,
+  "asOf": "2026-07-18"
+}
